@@ -280,7 +280,8 @@ static int __init setrclavier_init(void){
     // enregistrer la fonction de traitement de l'interruption.
     // Attention, cette fonction devra être appelée 4 fois (une fois pour chaque GPIO)!
     int num_irq;
-    num_irq = irqId[i] = (gpiosLire[i]);
+    num_irq =(gpiosLire[i]);
+    irqId[i] = num_irq;
     printk(KERN_INFO "SETR_CLAVIER : lecture #%i : num_IRQ = %i", i, num_irq);
         if( num_irq < 0 )
         {
@@ -292,7 +293,7 @@ static int __init setrclavier_init(void){
 
     // Vous devez également initialiser le mutex de synchronisation.
 
-    ok = request_irq((uint) num_irq,                 // Le numéro de l'interruption, obtenue avec gpio_to_irq
+    ok = request_irq((unsigned int) num_irq,                 // Le numéro de l'interruption, obtenue avec gpio_to_irq
          (irq_handler_t) setr_irq_handler,  // Pointeur vers la routine de traitement de l'interruption
          IRQF_TRIGGER_RISING,               // On veut une interruption sur le front montant (lorsque le bouton est pressé)
          "setr_irq_handler",                // Le nom de notre interruption
