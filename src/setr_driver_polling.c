@@ -71,7 +71,7 @@ static struct device* setrDevice = NULL;    // Contiendra les informations sur l
 static struct mutex sync;                          // Mutex servant à synchroniser les accès au buffer
 static struct task_struct *task;            // Réfère au thread noyau
 
-
+static int dureeDebounce = 50;
 // 4 GPIO doivent être assignés pour l'écriture, et 3 ou 4 en lecture (voir énoncé)
 // Nous vous proposons les choix suivants, mais ce n'est pas obligatoire
 static int  gpiosEcrire[] = {5, 6, 13, 19};             // Correspond aux pins 29, 31, 33 et 35
@@ -136,8 +136,34 @@ static int pollClavier(void *arg){
       // 2) Pour chaque patron, vérifier la valeur des lignes d'entrée
       // 3) Selon ces valeurs et le contenu de dernierEtat, déterminer si une nouvelle touche a été pressée
       // 4) Mettre à jour le buffer et dernierEtat en vous assurant d'éviter les race conditions avec le reste du module
+      for (patternIdx = 0; patternIdx < NOMBRE_LIGNES; patternIdx++) {
+          // Activation de la ligne correspondante
+          for (ligneIdx = 0; ligneIdx < NOMBRE_LIGNES; ligneIdx++) {
+              gpio_set_value(gpiosEcrire[ligneIdx], patronsBalayage[patternIdx][ligneIdx]);
+          }
+          udelay(5);
+          for (colIdx = 0; colIdx < NOMBRE_COLONNES; colIdx++) {
+              val = gpio_get_value(gpiosLire[colIdx]);
 
+               if (val == 1 && dernierEtat[patternIdx][colIdx] == 0) {
+                  mutex_lock(&sync);  // Début de la section critique
 
+                  // Mise à jour du buffer circulaire
+                  data[posCouranteEcriture] = valeursClavier[patternIdx][colIdx];
+                  posCouranteEcriture = (posCouranteEcriture + 1) % TAILLE_BUFFER;
+
+                  mutex_unlock(&sync);  // Fin de la section critique
+                  // Mise à jour de dernierEtat
+                  dernierEtat[patternIdx][colIdx] = 1;
+              }
+              // Si la touche n'est plus pressée
+              else if (val == 0 && dernierEtat[patternIdx][colIdx] == 1) {
+                  dernierEtat[patternIdx][colIdx] = 0;
+              }
+          }
+          gpio_set_value(gpiosEcrire[patternIdx], 0);
+      }
+      printk(KERN_INFO"La lecture est terminée\n");
       set_current_state(TASK_INTERRUPTIBLE); // On indique qu'on peut ere interrompu
       msleep(pausePollingMs);                // On se met en pause un certain temps
     }
@@ -181,7 +207,21 @@ static int __init setrclavier_init(void){
     //
     // Vous devez également initialiser le mutex de synchronisation.
 
+    for (i = 0; i < NOMBRE_LIGNES; i++) {
+        if (gpio_request_one(gpiosEcrire[i], GPIOF_OUT_INIT_LOW, gpiosEcrireNoms[i])) {
+            printk(KERN_ALERT "SETR_CLAVIER : Erreur lors de la demande du GPIO %d pour l'écriture\n", gpiosEcrire[i]);
+        }
+    }
 
+
+    for (i = 0; i < NOMBRE_COLONNES; i++) {
+        if (gpio_request_one(gpiosLire[i], GPIOF_IN, gpiosLireNoms[i])) {
+            printk(KERN_ALERT "SETR_CLAVIER : Erreur lors de la demande du GPIO %d pour la lecture\n", gpiosLire[i]);
+        }
+        gpio_set_debounce(gpiosLire[i], dureeDebounce);
+    }
+
+    mutex_init(&sync);
 
     // Le mutex devrait avoir été initialisé avant d'appeler la ligne suivante!
     task = kthread_run(pollClavier, NULL, "Thread_polling_clavier");
@@ -201,6 +241,13 @@ static void __exit setrclavier_exit(void){
     // TODO
     // Écrivez le code permettant de relâcher (libérer) les GPIO
     // Vous aurez pour cela besoin de la fonction gpio_free
+    for (i = 0; i < NOMBRE_LIGNES; i++) {
+        gpio_free(gpiosEcrire[i]);
+    }
+
+    for (i = 0; i < NOMBRE_COLONNES; i++) {
+        gpio_free(gpiosLire[i]);
+    }
 
     // On retire correctement les différentes composantes du pilote
     device_destroy(setrClasse, MKDEV(majorNumber, 0));
@@ -238,6 +285,38 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
     // revienne alors à 0. Il est donc tout à fait possible que posCouranteEcriture soit INFÉRIEUR à
     // posCouranteLecture, et vous devez gérer ce cas sans perdre de caractères et en respectant les
     // autres conditions (par exemple, ne jamais copier plus que len caractères).
+
+
+
+    int octets_disponibles, octets_a_copier;
+    ssize_t count = 0;
+
+    mutex_lock(&sync);
+
+    if (posCouranteEcriture >= posCouranteLecture) {
+        octets_disponibles = posCouranteEcriture - posCouranteLecture;
+    } else {
+        octets_disponibles = TAILLE_BUFFER - posCouranteLecture + posCouranteEcriture;
+    }
+
+
+    octets_a_copier = min(octets_disponibles, (int)len);
+
+    for (int i = 0; i < octets_a_copier; i++) {
+        if (copy_to_user(buffer + count, &data[posCouranteLecture], 1)) {
+            mutex_unlock(&sync);
+            return -EFAULT;
+        }
+        posCouranteLecture = (posCouranteLecture + 1) % TAILLE_BUFFER;
+        count++;
+    }
+
+    mutex_unlock(&sync);
+    return count;
+
+
+
+
 
 }
 
