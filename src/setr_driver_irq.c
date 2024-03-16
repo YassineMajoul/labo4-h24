@@ -248,14 +248,14 @@ static int __init setrclavier_init(void){
         err = gpio_request_one(gpiosEcrire[i], GPIOF_DIR_OUT | GPIOF_INIT_HIGH, gpiosEcrireNoms[i]); 
         if(err < 0)
         {
-            printk(KERN_ALERT "SETR_CLAVIER : Erreur gpio_request_one ecriture pin %i : %i\n", i, err);
+            printk(KERN_ALERT "SETR_CLAVIER_IRQ : Erreur gpio_request_one ecriture pin %i : %i\n", i, err);
         }
 
         // definir directions des gpios
         err = gpio_direction_output(gpiosEcrire[i], GPIOF_INIT_HIGH);
         if(err < 0)
         {
-            printk(KERN_ALERT "SETR_CLAVIER : Erreur gpio_direction_output pin %i : %i\n", i, err);
+            printk(KERN_ALERT "SETR_CLAVIER_IRQ : Erreur gpio_direction_output pin %i : %i\n", i, err);
         }
     }
 
@@ -264,13 +264,13 @@ static int __init setrclavier_init(void){
         err = gpio_request_one(gpiosLire[i], GPIOF_DIR_IN , gpiosLireNoms[i]);
         if(err < 0)
         {
-            printk(KERN_ALERT "SETR_CLAVIER : Erreur gpio_request_one lecture pin %i : %i\n", i, err);
+            printk(KERN_ALERT "SETR_CLAVIER_IRQ : Erreur gpio_request_one lecture pin %i : %i\n", i, err);
         }
 
         err = gpio_direction_input(gpiosLire[i]);
         if(err < 0)
         {
-            printk(KERN_ALERT "SETR_CLAVIER : Erreur gpio_direction_input pin %i : %i\n", i, err);
+            printk(KERN_ALERT "SETR_CLAVIER_IRQ : Erreur gpio_direction_input pin %i : %i\n", i, err);
         }
 
 
@@ -280,12 +280,12 @@ static int __init setrclavier_init(void){
     // enregistrer la fonction de traitement de l'interruption.
     // Attention, cette fonction devra être appelée 4 fois (une fois pour chaque GPIO)!
     int num_irq;
-    num_irq =(gpiosLire[i]);
+    num_irq =gpio_to_irq(gpiosLire[i]);
     irqId[i] = num_irq;
-    printk(KERN_INFO "SETR_CLAVIER : lecture #%i : num_IRQ = %i", i, num_irq);
+    printk(KERN_INFO "SETR_CLAVIER_IRQ : lecture #%i : num_IRQ = %i", i, num_irq);
         if( num_irq < 0 )
         {
-            printk(KERN_ERR "SETR_CLAVIER : Erreur lors du gpio_to_irq");
+            printk(KERN_ERR "SETR_CLAVIER_IRQ : Erreur lors du gpio_to_irq");
             return 1;
         }
     
