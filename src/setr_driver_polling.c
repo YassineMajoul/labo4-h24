@@ -34,7 +34,7 @@
 
 
 // Le nom de notre périphérique et le nom de sa classe
-#define DEV_NAME "claviersetr"
+#define DEV_NAME "setrclavier"
 #define CLS_NAME "setr"
 
 // Le nombre de caractères pouvant être contenus dans le buffer circulaire
@@ -288,21 +288,21 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
 
 
 
-    int octets_disponibles, octets_a_copier;
+    int toRead, toCopy;
     ssize_t count = 0;
 
     mutex_lock(&sync);
 
     if (posCouranteEcriture >= posCouranteLecture) {
-        octets_disponibles = posCouranteEcriture - posCouranteLecture;
+        toRead = posCouranteEcriture - posCouranteLecture;
     } else {
-        octets_disponibles = TAILLE_BUFFER - posCouranteLecture + posCouranteEcriture;
+        toRead = TAILLE_BUFFER - posCouranteLecture + posCouranteEcriture;
     }
 
 
-    octets_a_copier = min(octets_disponibles, (int)len);
+    toCopy = min(toRead, (int)len);
 
-    for (int i = 0; i < octets_a_copier; i++) {
+    for (int i = 0; i < toCopy; i++) {
         if (copy_to_user(buffer + count, &data[posCouranteLecture], 1)) {
             mutex_unlock(&sync);
             return -EFAULT;
@@ -326,6 +326,6 @@ module_exit(setrclavier_exit);
 
 // Description du module
 MODULE_LICENSE("GPL");            // Licence : laissez "GPL"
-MODULE_AUTHOR("Vous!");           // Vos noms
+MODULE_AUTHOR("Yassine MAjoul & Firas Saidani");           // Vos noms
 MODULE_DESCRIPTION("Lecteur de clavier externe");  // Description du module
 MODULE_VERSION("0.4");            // Numéro de version
