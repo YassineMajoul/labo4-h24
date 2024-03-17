@@ -32,7 +32,7 @@
 #include <linux/atomic.h>           // Synchronisation par valeur atomique
 
 // Le nom de notre périphérique et le nom de sa classe
-#define DEV_NAME "claviersetr"
+#define DEV_NAME "setrclavier" //précédemment claviersetr
 #define CLS_NAME "setr"
 
 // Le nombre de caractères pouvant être contenus dans le buffer circulaire
@@ -123,6 +123,7 @@ static int dernierEtat[NOMBRE_LIGNES][NOMBRE_COLONNES] = {0};
 
 
 void func_tasklet_polling(unsigned long paramf){
+    printk(KERN_INFO "SETR_CLAVIER_IRQ : tasklet lancée \n");
     // Cette fonction est le coeur d'exécution du tasklet
     // Elle fait à peu de choses près la même chose que le kthread
     // dans le pilote que vous avez précédemment écrit (par polling),
@@ -146,13 +147,13 @@ void func_tasklet_polling(unsigned long paramf){
     // 6) Remettre toutes les lignes à 1 (pour réarmer l'interruption)
     // 7) Réactiver le traitement des interruptions
 
-    for (int ligneIdx = 0; ligneIdx<NOMBRE_LIGNES; ligneIdx++)
+    for (ligneIdx = 0; ligneIdx<NOMBRE_LIGNES; ligneIdx++)
     {
         for(int i=0; i<NOMBRE_LIGNES; i++)
         {
             gpio_set_value(gpiosEcrire[i], patronsBalayage[ligneIdx][i]);
         }
-        for (int colIdx = 0; colIdx < NOMBRE_COLONNES; colIdx++)
+        for (colIdx = 0; colIdx < NOMBRE_COLONNES; colIdx++)
         {
             val = gpio_get_value(gpiosLire[colIdx]);
             if(val && (dernierEtat[ligneIdx][colIdx] == 0))
@@ -167,13 +168,14 @@ void func_tasklet_polling(unsigned long paramf){
         }
     }
 
-    for(int ligneIdx = 0; ligneIdx < NOMBRE_LIGNES; ligneIdx++)
+    for( ligneIdx = 0; ligneIdx < NOMBRE_LIGNES; ligneIdx++)
     {
         gpio_set_value(gpiosEcrire[ligneIdx], 1);
     }
 
     atomic_set(&irqActif, 0);
-
+    printk(KERN_INFO "SETR_CLAVIER_IRQ : touche active : %c \n", touche_active);
+    printk(KERN_INFO "SETR_CLAVIER_IRQ : tasklet terminé \n");
 }
 
 // On déclare le tasklet avec la macro DECLARE_TASKLET_OLD
@@ -193,6 +195,11 @@ static irqreturn_t  setr_irq_handler(unsigned int irq, void *dev_id){
 
     // On retourne en indiquant qu'on a géré l'interruption
 
+    //DEBUGGING
+    printk(KERN_INFO "STR_CLAVIER_IRQ_DEBUG : ENTERED THE HANDLER : IRQ: %u, dev_id: %p\n", irq, dev_id);
+    //FIN DEBUGGING
+
+
     if(atomic_read_acquire(&irqActif) == 1)
     {
         printk(KERN_INFO "SETR_CLAVIER : IRQ handler - ignored");
@@ -200,19 +207,19 @@ static irqreturn_t  setr_irq_handler(unsigned int irq, void *dev_id){
     else
     {
         atomic_set(&irqActif, 1);
+        printk(KERN_INFO "SETR_CLAVIER_IRQ : IRQ handler - handled");
         tasklet_init(&tasklet_polling, &func_tasklet_polling, 0);
         tasklet_schedule(&tasklet_polling );
     }
-
+    printk(KERN_INFO "STR_CLAVIER_IRQ_DEBUG : EXITED THE HANDLER : IRQ: %u, dev_id: %p\n", irq, dev_id);
     return (irqreturn_t) IRQ_HANDLED;
 }
 
 
 static int __init setrclavier_init(void){
-    int i;
-    int ok;
+    int i, ok, err;
     printk(KERN_INFO "SETR_CLAVIER_IRQ : Initialisation du driver commencee\n");
-
+    atomic_set(&irqActif, 0); //on devrait commencer avec irqActif a 0
     majorNumber = register_chrdev(0, DEV_NAME, &fops);
     if (majorNumber<0){
       printk(KERN_ALERT "SETR_CLAVIER_IRQ : Erreur lors de l'appel a register_chrdev!\n");
@@ -223,7 +230,7 @@ static int __init setrclavier_init(void){
     setrClasse = class_create(THIS_MODULE, CLS_NAME);
     if (IS_ERR(setrClasse)){
       unregister_chrdev(majorNumber, DEV_NAME);
-      printk(KERN_ALERT "SETR_CLAVIER_IRQ : Erreur lors de la creation de la classe de peripherique\n");
+      printk(KERN_ALERT "SETR_CLAVIER_IRQ : Erreur lors de la création de la classe de péripherique\n");
       return PTR_ERR(setrClasse);
     }
     printk(KERN_INFO "SETR_CLAVIER_IRQ : device class OK\n");
@@ -233,7 +240,7 @@ static int __init setrclavier_init(void){
     if (IS_ERR(setrDevice)){
       class_destroy(setrClasse);
       unregister_chrdev(majorNumber, DEV_NAME);
-      printk(KERN_ALERT "SETR_CLAVIER_IRQ : Erreur lors de la creation du pilote de peripherique\n");
+      printk(KERN_ALERT "SETR_CLAVIER_IRQ : Erreur lors de la création du pilote de péripherique\n");
       return PTR_ERR(setrDevice);
     }
 
@@ -242,13 +249,13 @@ static int __init setrclavier_init(void){
     // Initialisez les GPIO. Chaque GPIO utilisé doit être enregistré (fonction gpio_request)
     // et se voir donner une direction (gpio_direction_input / gpio_direction_output).
     // Ces opérations peuvent également être combinées si vous trouvez la bonne fonction pour le faire.
-        int err;
-        for( int i = 0; i < NOMBRE_LIGNES; i++ ) //On Init les GPIOs de chaque ligne
+
+        for( i = 0; i < NOMBRE_LIGNES; i++ ) //On Init les GPIOs de chaque ligne
         { 
         err = gpio_request_one(gpiosEcrire[i], GPIOF_DIR_OUT | GPIOF_INIT_HIGH, gpiosEcrireNoms[i]); 
         if(err < 0)
         {
-            printk(KERN_ALERT "SETR_CLAVIER_IRQ : Erreur gpio_request_one ecriture pin %i : %i\n", i, err);
+            printk(KERN_ALERT "SETR_CLAVIER_IRQ : Erreur gpio_request_one écriture pin %i : %i\n", i, err);
         }
 
         // definir directions des gpios
@@ -258,8 +265,8 @@ static int __init setrclavier_init(void){
             printk(KERN_ALERT "SETR_CLAVIER_IRQ : Erreur gpio_direction_output pin %i : %i\n", i, err);
         }
     }
-
-        for( int i = 0; i < NOMBRE_COLONNES; i++ ) //On init les GPIOs de chaque colonne
+        int num_irq;
+        for(  i = 0; i < NOMBRE_COLONNES; i++ ) //On init les GPIOs de chaque colonne
         { 
         err = gpio_request_one(gpiosLire[i], GPIOF_DIR_IN , gpiosLireNoms[i]);
         if(err < 0)
@@ -273,14 +280,13 @@ static int __init setrclavier_init(void){
             printk(KERN_ALERT "SETR_CLAVIER_IRQ : Erreur gpio_direction_input pin %i : %i\n", i, err);
         }
 
-
     // Finalement, vous devez enregistrer une IRQ pour chaque GPIO en entrée. Utilisez
     // pour ce faire gpio_to_irq, ce qui vous donnera le numéro d'interruption lié à un
     // GPIO en particulier, puis appelez request_irq comme présenté plus bas pour
     // enregistrer la fonction de traitement de l'interruption.
     // Attention, cette fonction devra être appelée 4 fois (une fois pour chaque GPIO)!
-    int num_irq;
-    num_irq =gpio_to_irq(gpiosLire[i]);
+    
+    num_irq = gpio_to_irq(gpiosLire[i]);
     irqId[i] = num_irq;
     printk(KERN_INFO "SETR_CLAVIER_IRQ : lecture #%i : num_IRQ = %i", i, num_irq);
         if( num_irq < 0 )
@@ -288,11 +294,7 @@ static int __init setrclavier_init(void){
             printk(KERN_ERR "SETR_CLAVIER_IRQ : Erreur lors du gpio_to_irq");
             return 1;
         }
-    
-
-
-    // Vous devez également initialiser le mutex de synchronisation.
-
+    printk(KERN_ERR "SETR_CLAVIER_IRQ : Registering IRQ, unsigned : %u, signed : %i", (unsigned int) num_irq, num_irq);
     ok = request_irq((unsigned int) num_irq,                 // Le numéro de l'interruption, obtenue avec gpio_to_irq
          (irq_handler_t) setr_irq_handler,  // Pointeur vers la routine de traitement de l'interruption
          IRQF_TRIGGER_RISING,               // On veut une interruption sur le front montant (lorsque le bouton est pressé)
@@ -303,6 +305,7 @@ static int __init setrclavier_init(void){
         printk(KERN_ALERT "Erreur (%d) lors de l'enregistrement IRQ #{%d}!\n", ok, num_irq);
     }
     }
+    // Vous devez également initialiser le mutex de synchronisation.
         mutex_init(&sync);
 
         printk(KERN_INFO "SETR_CLAVIER_IRQ : Fin de l'Initialisation!\n"); // Made it! device was initialized
@@ -320,12 +323,12 @@ static void __exit setrclavier_exit(void){
     // Vous devrez également relâcher les interruptions qui ont été
     // précédemment enregistrées. Utilisez free_irq(irqno, NULL)
 
-    for(int i = 0; i < NOMBRE_LIGNES; i++)
+    for(i = 0; i < NOMBRE_LIGNES; i++)
     {
         gpio_free(gpiosEcrire[i]);
     }
 
-    for(int i = 0; i < NOMBRE_COLONNES; i++)
+    for(i = 0; i < NOMBRE_COLONNES; i++)
     {
         gpio_free(gpiosLire[i]);
         free_irq(irqId[i], NULL);
@@ -375,11 +378,11 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
     // posCouranteLecture, et vous devez gérer ce cas sans perdre de caractères et en respectant les
     // autres conditions (par exemple, ne jamais copier plus que len caractères).
 
-    int toRead, toCopy;
+    int toRead, toCopy, posLecture, posEcriture;
 
     mutex_lock(&sync);
-    int posLecture = posCouranteLecture;
-    int posEcriture = posCouranteEcriture;
+    posLecture = posCouranteLecture;
+    posEcriture = posCouranteEcriture;
     mutex_unlock(&sync);
 
     if(posLecture == posEcriture)
@@ -418,6 +421,7 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
 
     do {
         if (copy_to_user(buffer, buffercopy, toCopy) < 0) {
+            printk(KERN_INFO "SETR_CLAVIER temp: copying to user...\n");
             continue;  // on reste dans le while
         } else {
             break;  //copie réussie
